@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="D:\SSGC\Downloads\pdc project\llama.cpp\inference_engine\inference_engine\build\CMakeFiles\c313d8d010572d9be135250505cf40bc\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{444F2405-B98A-31E5-8D75-8103BB223444}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,102 @@
+﻿#include "ModelWrapper.h"
+#include "../../include/llama.h"
+#include <stdexcept>
+#include <vector>
+#include <iostream>
+
+ModelWrapper::ModelWrapper(const std::string& model_path,
+                           int n_ctx, int n_threads, unsigned int seed)
+    : n_ctx_(n_ctx), n_threads_(n_threads), seed_(seed)
+{
+    llama_backend_init();
+
+    llama_model_params mparams = llama_model_default_params();
+    mparams.n_gpu_layers = 0;
+
+    model_ = llama_model_load_from_file(model_path.c_str(), mparams);
+    if (!model_)
+        throw std::runtime_error("Failed to load model: " + model_path);
+
+    llama_context_params cparams = llama_context_default_params();
+    cparams.n_ctx     = n_ctx_;
+    cparams.n_threads = n_threads_;
+
+    ctx_ = llama_init_from_model(model_, cparams);
+    if (!ctx_) {
+        llama_model_free(model_);
+        throw std::runtime_error("Failed to create context");
+    }
+
+    std::cerr << "[ModelWrapper] Loaded OK. ctx=" << n_ctx_
+              << " threads=" << n_threads_ << " seed=" << seed_ << "\n";
+}
+
+ModelWrapper::~ModelWrapper() {
+    if (ctx_)   { llama_free(ctx_);         ctx_   = nullptr; }
+    if (model_) { llama_model_free(model_); model_ = nullptr; }
+    llama_backend_free();
+    std::cerr << "[ModelWrapper] Cleaned up.\n";
+}
+
+InferenceResult ModelWrapper::run_inference(const std::string& prompt,
+                                            int max_new_tokens,
+                                            float temperature,
+                                            float top_p)
+{
+    if (!is_loaded())
+        return {"", InferenceStatus::FAILURE_MODEL_NOT_LOADED, "Model not loaded", 0};
+
+    if (prompt.empty())
+        return {"", InferenceStatus::FAILURE_EMPTY_PROMPT, "Prompt is empty", 0};
+
+    try {
+        const llama_vocab* vocab = llama_model_get_vocab(model_);
+
+        std::vector<llama_token> tokens(n_ctx_);
+        int n_tokens = llama_tokenize(
+            vocab,
+            prompt.c_str(), (int)prompt.size(),
+            tokens.data(), (int)tokens.size(),
+            true, false
+        );
+
+        if (n_tokens < 0)
+            return {"", InferenceStatus::FAILURE_TOKEN_LIMIT, "Prompt too long", 0};
+        tokens.resize(n_tokens);
+
+        llama_batch batch = llama_batch_get_one(tokens.data(), n_tokens);
+        if (llama_decode(ctx_, batch) != 0)
+            return {"", InferenceStatus::FAILURE_RUNTIME_ERROR, "Decode failed", 0};
+
+        std::string output;
+        int generated = 0;
+
+        auto* sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
+        llama_sampler_chain_add(sampler, llama_sampler_init_temp(temperature));
+        llama_sampler_chain_add(sampler, llama_sampler_init_top_p(top_p, 1));
+        llama_sampler_chain_add(sampler, llama_sampler_init_dist(seed_));
+
+        for (int i = 0; i < max_new_tokens; i++) {
+            llama_token tok = llama_sampler_sample(sampler, ctx_, -1);
+
+            if (llama_vocab_is_eog(vocab, tok)) break;
+
+            char buf[256] = {};
+            int  n        = llama_token_to_piece(vocab, tok, buf, sizeof(buf), 0, true);
+            if (n > 0) output.append(buf, n);
+
+            llama_batch nb = llama_batch_get_one(&tok, 1);
+            if (llama_decode(ctx_, nb) != 0) break;
+            generated++;
+        }
+
+        llama_sampler_free(sampler);
+        llama_memory_clear(llama_get_memory(ctx_), true);
+
+        return {output, InferenceStatus::SUCCESS, "", generated};
+
+    } catch (const std::exception& e) {
+        return {"", InferenceStatus::FAILURE_RUNTIME_ERROR,
+                std::string("Exception: ") + e.what(), 0};
+    }
+}

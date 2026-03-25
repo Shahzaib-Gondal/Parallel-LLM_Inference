@@ -1,0 +1,10 @@
+^D:\SSGC\DOWNLOADS\PDC PROJECT\LLAMA.CPP\INFERENCE_ENGINE\INFERENCE_ENGINE\BUILD\CMAKEFILES\C313D8D010572D9BE135250505CF40BC\GENERATE.STAMP.RULE
+setlocal
+"D:\Program Files\Cmake\bin\cmake.exe" "-SD:/SSGC/Downloads/pdc project/llama.cpp/inference_engine/inference_engine" "-BD:/SSGC/Downloads/pdc project/llama.cpp/inference_engine/inference_engine/build" --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file "D:/SSGC/Downloads/pdc project/llama.cpp/inference_engine/inference_engine/build/inference_engine.sln"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

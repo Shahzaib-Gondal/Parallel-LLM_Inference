@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"D:/SSGC/Downloads/pdc project/llama.cpp/inference_engine/inference_engine/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
