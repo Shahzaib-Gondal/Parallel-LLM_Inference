@@ -7,6 +7,7 @@
 #include "InferenceJob.h"
 #include "ResultStorage.h"
 #include "ModelWrapper.h"
+#include "Logger.h"
 
 class WorkerPool {
 private:
@@ -15,8 +16,9 @@ private:
     void worker_loop(int worker_id);
     ResultsStorage& results_store;
     ModelWrapper& llm;
+    Logger& logger_;
 
 public:
-    WorkerPool(size_t num_threads, ThreadSafeQueue<InferenceJob>& queue, ResultsStorage& results, ModelWrapper& llm);
+    WorkerPool(size_t num_threads, ThreadSafeQueue<InferenceJob>& queue, ResultsStorage& results, ModelWrapper& llm, Logger& logger);
     ~WorkerPool();
 };

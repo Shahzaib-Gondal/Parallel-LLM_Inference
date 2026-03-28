@@ -16,28 +16,35 @@ void WorkerPool::worker_loop(int worker_id) {
     InferenceJob current_job;
 
     while (job_queue_.wait_and_pop(current_job)) {
-        cout << "[Worker " << worker_id << "] Started processing Job " 
-                  << current_job.jobid << " (Prompt: " << current_job.prompt << ")\n";
+        logger_.log("[Worker " + std::to_string(worker_id) + "] Started processing Job " + current_job.jobid, LogLevel::INFO);
 
-        this_thread::sleep_for(chrono::milliseconds(1500)); 
+        this_thread::sleep_for(chrono::milliseconds(150)); 
         {
         static std::mutex model_mutex; 
         std::lock_guard<std::mutex> lock(model_mutex);
-        current_job.output = llm.run_inference(current_job.prompt, current_job.tokens, current_job.temperature, current_job.top_p);
-        //current_job.output.output = "Generated response for: " + current_job.prompt;
+        try {
+            current_job.output = llm.run_inference(current_job.prompt, current_job.tokens, current_job.temperature, current_job.top_p);
+        } catch (const std::exception& e) {
+            logger_.log("[Worker " + std::to_string(worker_id) + "] Exception during generation for Job " + current_job.jobid + ": " + e.what(), LogLevel::ERROR);
+            current_job.output = {"", InferenceStatus::FAILURE_RUNTIME_ERROR, e.what(), 0};
+        }
         }
         results_store.update_res(current_job.jobid, current_job.output);
-        cout << "[Worker " << worker_id << "] Finished Job " 
-                  << current_job.jobid << "\n";
+        
+        if (current_job.output.status == InferenceStatus::SUCCESS) {
+            logger_.log("[Worker " + std::to_string(worker_id) + "] Successfully Finished Job " + current_job.jobid, LogLevel::INFO);
+        } else {
+            logger_.log("[Worker " + std::to_string(worker_id) + "] Failed Job " + current_job.jobid, LogLevel::ERROR);
+        }
     }
 
-    cout << "[Worker " << worker_id << "] Shutting down.\n";
+    logger_.log("[Worker " + std::to_string(worker_id) + "] Shutting down.", LogLevel::INFO);
 }
 
-WorkerPool::WorkerPool(size_t num_threads, ThreadSafeQueue<InferenceJob>& queue, ResultsStorage& results, ModelWrapper& llm) 
-    : job_queue_(queue), results_store(results), llm(llm){
+WorkerPool::WorkerPool(size_t num_threads, ThreadSafeQueue<InferenceJob>& queue, ResultsStorage& results, ModelWrapper& llm, Logger& logger) 
+    : job_queue_(queue), results_store(results), llm(llm), logger_(logger) {
     
-    cout << "Starting Worker Pool with " << num_threads << " threads...\n";
+    logger_.log("Starting Worker Pool with " + std::to_string(num_threads) + " threads...", LogLevel::INFO);
     
     for (size_t i = 0; i < num_threads; ++i) {
         // Create a thread and assign it the worker_loop function
@@ -51,7 +58,7 @@ WorkerPool::~WorkerPool() {
             worker.join(); // Wait for the thread to finish its current loop
         }
     }
-    cout << "Worker Pool successfully destroyed.\n";
+    logger_.log("Worker Pool successfully destroyed.", LogLevel::INFO);
 }
 
 /*
