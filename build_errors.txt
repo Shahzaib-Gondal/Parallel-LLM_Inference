@@ -1,4 +1,0 @@
-WorkerPool.cpp:1:9: warning: '#pragma once' in main file [-Wpragma-once-outside-header]
-    1 | #pragma once
-      |         ^~~~
-collect2.exe: error: ld returned 1 exit status
