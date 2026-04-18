@@ -78,7 +78,7 @@ void test_concurrent_stress(InferenceAPI& api, int num_requests) {
 int main(int argc, char* argv[]) {
     logger.log("=== STARTING M1 VERIFICATION TESTS ===", LogLevel::INFO);
     
-    const std::string model_path = (argc > 1) ? argv[1] : "../models/tinyllama.gguf";
+    const std::string model_path = (argc > 1) ? argv[1] : "C:/Users/HP/Desktop/parallel-inference/Parallel-LLM_Inference/models/tinyllama.gguf";
 
     try {
         ModelWrapper llm_model(model_path);

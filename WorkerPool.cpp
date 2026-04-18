@@ -25,7 +25,7 @@ void WorkerPool::worker_loop(int worker_id) {
         try {
             current_job.output = llm.run_inference(current_job.prompt, current_job.tokens, current_job.temperature, current_job.top_p);
         } catch (const std::exception& e) {
-            logger_.log("[Worker " + std::to_string(worker_id) + "] Exception during generation for Job " + current_job.jobid + ": " + e.what(), LogLevel::ERROR);
+            logger_.log("[Worker " + std::to_string(worker_id) + "] Exception during generation for Job " + current_job.jobid + ": " + e.what(), LogLevel::LOG_ERROR);
             current_job.output = {"", InferenceStatus::FAILURE_RUNTIME_ERROR, e.what(), 0};
         }
         }
@@ -34,7 +34,7 @@ void WorkerPool::worker_loop(int worker_id) {
         if (current_job.output.status == InferenceStatus::SUCCESS) {
             logger_.log("[Worker " + std::to_string(worker_id) + "] Successfully Finished Job " + current_job.jobid, LogLevel::INFO);
         } else {
-            logger_.log("[Worker " + std::to_string(worker_id) + "] Failed Job " + current_job.jobid, LogLevel::ERROR);
+            logger_.log("[Worker " + std::to_string(worker_id) + "] Failed Job " + current_job.jobid, LogLevel::LOG_ERROR);
         }
     }
 
