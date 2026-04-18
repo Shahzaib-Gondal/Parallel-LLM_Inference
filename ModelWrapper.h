@@ -1,4 +1,3 @@
-
 #pragma once
 #include "InferenceResult.h"
 #include <string>
