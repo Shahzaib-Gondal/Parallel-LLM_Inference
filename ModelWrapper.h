@@ -21,12 +21,13 @@ public:
                                   float temperature    = 0.7f,
                                   float top_p          = 0.9f);
 
-    bool is_loaded() const { return model_ != nullptr && ctx_ != nullptr; }
+    bool is_loaded() const { return model_ != nullptr && t_ctx != nullptr; }
 
 private:
     llama_model*   model_    = nullptr;
-    llama_context* ctx_      = nullptr;
+    static thread_local llama_context* t_ctx; //localising context
     int            n_ctx_;
     int            n_threads_;
     unsigned int   seed_;
+    void thread_context();
 };

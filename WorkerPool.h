@@ -14,6 +14,9 @@ private:
     std::vector<std::thread> workers_;
     ThreadSafeQueue<InferenceJob>& job_queue_;
     void worker_loop(int worker_id);
+    //m2 funcs to measure
+    void pintocore(int core_id);
+    void efficiency_measure(int worker_id);
     ResultsStorage& results_store;
     ModelWrapper& llm;
     Logger& logger_;

@@ -7,36 +7,56 @@
 #include <vector>
 #include <thread>
 #include <iostream>
-#include <mutex>
 #include <chrono>
+#include <windows.h>
 
 using namespace std;
+//m2 new funcs
+void WorkerPool::pintocore(int core_id){ //pins threads to cores for cache locality
+    HANDLE hThread = GetCurrentThread();
+    DWORD_PTR mask = (1ULL << core_id); //shifting left for 
+    if (SetThreadAffinityMask(hThread, mask) == 0) {
+        logger_.log("Failed to pin Worker " + std::to_string(core_id) + "to core", LogLevel::LOG_ERROR);
+    }
+}
+
+void WorkerPool::efficiency_measure(int worker_id){
+    FILETIME ftCreation, ftExit, ftKernel, ftUser;
+    if (GetThreadTimes(GetCurrentThread(), &ftCreation, &ftExit, &ftKernel, &ftUser)) {
+        //converting to readable integers
+        ULARGE_INTEGER kernel, user;
+        kernel.LowPart = ftKernel.dwLowDateTime;
+        kernel.HighPart = ftKernel.dwHighDateTime;
+        user.LowPart = ftUser.dwLowDateTime;
+        user.HighPart = ftUser.dwHighDateTime; //kernel and user times
+
+        logger_.log("[Worker " + std::to_string(worker_id) + "] Telemetry - Kernel: " + std::to_string(kernel.QuadPart) + " User: " + std::to_string(user.QuadPart), LogLevel::INFO);
+    }
+}
 
 void WorkerPool::worker_loop(int worker_id) {
+    pintocore(worker_id);
     InferenceJob current_job;
 
     while (job_queue_.wait_and_pop(current_job)) {
         logger_.log("[Worker " + std::to_string(worker_id) + "] Started processing Job " + current_job.jobid, LogLevel::INFO);
 
-        this_thread::sleep_for(chrono::milliseconds(150)); 
-        {
-        static std::mutex model_mutex; 
-        std::lock_guard<std::mutex> lock(model_mutex);
+        //this_thread::sleep_for(chrono::milliseconds(150)); 
         try {
             current_job.output = llm.run_inference(current_job.prompt, current_job.tokens, current_job.temperature, current_job.top_p);
         } catch (const std::exception& e) {
             logger_.log("[Worker " + std::to_string(worker_id) + "] Exception during generation for Job " + current_job.jobid + ": " + e.what(), LogLevel::LOG_ERROR);
             current_job.output = {"", InferenceStatus::FAILURE_RUNTIME_ERROR, e.what(), 0};
         }
-        }
-        results_store.update_res(current_job.jobid, current_job.output);
         
+        efficiency_measure(worker_id);
+        results_store.update_res(current_job.jobid, current_job.output);
+    }
         if (current_job.output.status == InferenceStatus::SUCCESS) {
             logger_.log("[Worker " + std::to_string(worker_id) + "] Successfully Finished Job " + current_job.jobid, LogLevel::INFO);
         } else {
             logger_.log("[Worker " + std::to_string(worker_id) + "] Failed Job " + current_job.jobid, LogLevel::LOG_ERROR);
         }
-    }
 
     logger_.log("[Worker " + std::to_string(worker_id) + "] Shutting down.", LogLevel::INFO);
 }
