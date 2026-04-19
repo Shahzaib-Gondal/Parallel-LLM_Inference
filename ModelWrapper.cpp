@@ -25,7 +25,6 @@ ModelWrapper::ModelWrapper(const std::string& model_path,
               << " threads_per_ctx=" << n_threads_ << "\n";
 }
 
-// Helper to initialize or retrieve the context for the current thread
 void ModelWrapper::thread_context() {
     if (t_ctx == nullptr) {
         llama_context_params cparams = llama_context_default_params();
@@ -41,9 +40,6 @@ void ModelWrapper::thread_context() {
 }
 
 ModelWrapper::~ModelWrapper() {
-    // Note: t_ctx is thread_local and cannot be easily cleaned up here 
-    // for all threads. In a benchmark, letting the OS reclaim is common, 
-    // but for production, you'd use a thread-exit cleanup pattern.
     if (model_) { 
         llama_model_free(model_); 
         model_ = nullptr; 
@@ -64,7 +60,6 @@ InferenceResult ModelWrapper::run_inference(const std::string& prompt,
         return {"", InferenceStatus::FAILURE_EMPTY_PROMPT, "Prompt is empty", 0};
 
     try {
-        // Ensure this specific thread has a context before proceeding
         thread_context();
 
         const llama_vocab* vocab = llama_model_get_vocab(model_);
