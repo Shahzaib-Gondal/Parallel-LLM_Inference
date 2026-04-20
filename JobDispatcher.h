@@ -6,28 +6,37 @@
 #include <iostream>
 #include <atomic>
 
+using namespace std;
+
 class JobDispatcher {
 private:
     ThreadSafeQueue<InferenceJob>& pending_queue_;
-    ThreadSafeQueue<InferenceJob>& execution_queue_;
+    ThreadSafeQueue<std::vector<InferenceJob>>& execution_queue_;
     std::thread dispatcher_thread_;
-
+    size_t max_batch_size_ = 4;
+    std::chrono::milliseconds timeout_ = std::chrono::milliseconds(500);
+    atomic<bool> is_running{true};
     void dispatch_loop() {
+        vector<InferenceJob>current_batch;
         InferenceJob current_job;
-
+        
         std::cout << "[Dispatcher] Online. Listening for incoming requests...\n";
 
         // Pull from the API queue
-        while (pending_queue_.wait_and_pop(current_job)) {
-            
-            std::cout << "[Dispatcher] Received Job " << current_job.jobid << ". Analyzing...\n";
+        while (is_running) {
+            bool got_job = pending_queue_.wait_and_pop_timeout(current_job, timeout_);
+            if(got_job){
+                current_job.status = JobStatus::RUNNING; 
+                current_batch.push_back(std::move(current_job));
+            }
 
             //update the state and pass it immediately to the workers.
-
-            current_job.status = JobStatus::RUNNING; // update state tracking
+            if((current_batch.size()==max_batch_size_ || !got_job)&& !current_batch.empty()){
+                execution_queue_.push(current_batch);
+                current_batch.clear();
+            }
             
-            //push to the worker pool's queue
-            execution_queue_.push(current_job);
+            
 
 
         }
@@ -37,7 +46,7 @@ private:
 
 public:
     JobDispatcher(ThreadSafeQueue<InferenceJob>& api_queue, 
-                  ThreadSafeQueue<InferenceJob>& worker_queue)
+                  ThreadSafeQueue<vector<InferenceJob>>& worker_queue)
         : pending_queue_(api_queue), execution_queue_(worker_queue) {
         
         // start the dispatcher thread
@@ -45,6 +54,7 @@ public:
     }
 
     ~JobDispatcher() {
+        is_running=false;
         if (dispatcher_thread_.joinable()) {
             dispatcher_thread_.join();
         }

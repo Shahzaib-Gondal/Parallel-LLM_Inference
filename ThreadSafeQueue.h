@@ -44,6 +44,25 @@ public:
         return true;
     }
 
+    bool wait_and_pop_timeout(T& value, std::chrono::milliseconds timeout) {
+        unique_lock<mutex> lock(mutex_);
+        
+        // wait_for returns false if the time runs out before the queue has an item.
+        // It returns true if an item arrives (or is already there).
+        bool got_item = cv_not_empty_.wait_for(lock, timeout, [this]{ return !queue_.empty(); });
+
+        if (!got_item) {
+            return false; // The timer expired, and the queue is still empty.
+        }
+
+        // We successfully got an item before the timer ran out!
+        value = move(queue_.front());
+        queue_.pop();
+        cv_not_full_.notify_one(); // Tell the API it has room to push more jobs
+        
+        return true; 
+    }
+
     void shutdown() {
         shutdown_ = true;
         cv_not_empty_.notify_all(); // Wake up any sleeping consumers

@@ -11,12 +11,12 @@
 class WorkerPool {
 private:
     std::vector<std::thread> workers_;
-    ThreadSafeQueue<InferenceJob>& job_queue_;
+    ThreadSafeQueue<vector<InferenceJob>>& job_queue_;
     void worker_loop(int worker_id);
     ResultsStorage& results_store;
     ModelWrapper& llm;
 
 public:
-    WorkerPool(size_t num_threads, ThreadSafeQueue<InferenceJob>& queue, ResultsStorage& results, ModelWrapper& llm);
+    WorkerPool(size_t num_threads, ThreadSafeQueue<vector<InferenceJob>>& queue, ResultsStorage& results, ModelWrapper& llm);
     ~WorkerPool();
 };

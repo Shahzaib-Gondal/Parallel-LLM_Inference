@@ -21,6 +21,10 @@ public:
                                   int   max_new_tokens = 128,
                                   float temperature    = 0.7f,
                                   float top_p          = 0.9f);
+    std::vector<string> run_batch_inference(const std::vector<std::string>& prompt,
+                                  int   max_new_tokens = 128,
+                                  float temperature    = 0.7f,
+                                  float top_p          = 0.9f);
 
     bool is_loaded() const { return model_ != nullptr && ctx_ != nullptr; }
 

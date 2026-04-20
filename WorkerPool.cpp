@@ -13,28 +13,34 @@
 using namespace std;
 
 void WorkerPool::worker_loop(int worker_id) {
-    InferenceJob current_job;
+    vector<InferenceJob> current_batch;
 
-    while (job_queue_.wait_and_pop(current_job)) {
-        cout << "[Worker " << worker_id << "] Started processing Job " 
-                  << current_job.jobid << " (Prompt: " << current_job.prompt << ")\n";
+    while (job_queue_.wait_and_pop(current_batch)) {
+        cout << "[Worker " << worker_id << "] Received a batch of " 
+             << current_batch.size() << " jobs.\n";
+        vector<string>batch_prompts;
+        for (const auto& job : current_batch) {
+            batch_prompts.push_back(job.prompt);
+        }
+
+        vector<string>batch_outputs;
 
         this_thread::sleep_for(chrono::milliseconds(1500)); 
         {
         static std::mutex model_mutex; 
         std::lock_guard<std::mutex> lock(model_mutex);
-        current_job.output = llm.run_inference(current_job.prompt, current_job.tokens, current_job.temperature, current_job.top_p);
+        batch_outputs = llm.run_batch_inference(batch_prompts, current_batch[0].tokens, current_batch[0].temperature, current_batch[0].top_p);
         //current_job.output.output = "Generated response for: " + current_job.prompt;
         }
-        results_store.update_res(current_job.jobid, current_job.output);
+        results_store.update_res_batch(current_batch, batch_outputs);
         cout << "[Worker " << worker_id << "] Finished Job " 
-                  << current_job.jobid << "\n";
+                  << current_batch[0].jobid << "\n";
     }
 
     cout << "[Worker " << worker_id << "] Shutting down.\n";
 }
 
-WorkerPool::WorkerPool(size_t num_threads, ThreadSafeQueue<InferenceJob>& queue, ResultsStorage& results, ModelWrapper& llm) 
+WorkerPool::WorkerPool(size_t num_threads, ThreadSafeQueue<vector<InferenceJob>>& queue, ResultsStorage& results, ModelWrapper& llm) 
     : job_queue_(queue), results_store(results), llm(llm){
     
     cout << "Starting Worker Pool with " << num_threads << " threads...\n";
