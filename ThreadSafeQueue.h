@@ -5,6 +5,8 @@
 #include <memory>
 #include <atomic>
 
+using namespace std;
+
 template <typename T>
 class ThreadSafeQueue {
 private:
