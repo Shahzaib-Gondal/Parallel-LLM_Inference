@@ -20,8 +20,21 @@ private:
     ResultsStorage& results_store;
     ModelWrapper& llm;
     Logger& logger_;
+    mutable std::mutex stats_mutex_;
+    double total_inference_ms_   = 0.0;
+    double total_e2e_ms_         = 0.0;
+    double total_queue_wait_ms_  = 0.0;
+    int    completed_jobs_       = 0;
 
 public:
     WorkerPool(size_t num_threads, ThreadSafeQueue<InferenceJob>& queue, ResultsStorage& results, ModelWrapper& llm, Logger& logger);
     ~WorkerPool();
+     struct LatencyStats {
+        double avg_inference_ms  = 0.0;  // pure model execution time
+        double avg_e2e_ms        = 0.0;  // enqueue → inference complete
+        double avg_queue_wait_ms = 0.0;  // time sitting in queue
+        int    jobs_completed    = 0;
+    };
+ 
+    LatencyStats get_latency_stats() const;
 };
