@@ -23,16 +23,16 @@ struct InferenceJob{
     //output
     InferenceResult output;
 
-    // --- Latency tracking ---
-    // Set by the producer (benchmark) before pushing to queue
+
+    // Set by the JobDispatcher before pushing to queue
     std::chrono::high_resolution_clock::time_point enqueue_time{};
-    // Set by the worker just before inference begins
+    // Set by the workerthread just before inference begins
     std::chrono::high_resolution_clock::time_point inference_start{};
-    // Set by the worker immediately after inference completes
+    // Set by the workerthread immediately after inference completes
     std::chrono::high_resolution_clock::time_point inference_end{};
 
-    // Derived fields (populated by worker after inference)
+    //populated by workerthread after inference
     double queue_wait_ms  = 0.0; // time spent waiting in queue before worker picks it up
     double inference_ms   = 0.0; // pure model execution time
-    double e2e_latency_ms = 0.0; // enqueue → inference complete (queue_wait + inference)
+    double e2e_latency_ms = 0.0; // (queue_wait + inference = end to end)
 };

@@ -115,3 +115,141 @@ InferenceResult ModelWrapper::run_inference(const std::string& prompt,
                 std::string("Exception: ") + e.what(), 0};
     }
 }
+
+std::vector<std::string> ModelWrapper::run_batch_inference(
+    const std::vector<std::string>& prompts,
+    int max_new_tokens,
+    float temperature,
+    float top_p)
+{
+    // Initialize an empty vector to hold our answers
+    std::vector<std::string> outputs(prompts.size(), "");
+
+    if (!is_loaded() || prompts.empty())
+        return outputs;
+
+    try {
+        thread_context(); //initialising a local thread context
+        const llama_vocab* vocab = llama_model_get_vocab(model_);
+
+        // 1. Initialize a batch large enough to hold all tokens from all prompts.
+        // n_ctx_ is used as a safe upper-bound for the initial memory allocation.
+        llama_batch batch = llama_batch_init(n_ctx_, 0, prompts.size());
+
+        // Tracking arrays for the parallel sequences
+        std::vector<int> current_pos(prompts.size(), 0);
+        std::vector<bool> active_seqs(prompts.size(), true);
+        std::vector<int> seq_batch_idx(prompts.size(), -1); 
+
+        // =========================================================
+        // PHASE 1: PACK THE INITIAL BATCH
+        // =========================================================
+        for (size_t s = 0; s < prompts.size(); ++s) {
+            std::vector<llama_token> tokens(n_ctx_);
+            int n_tokens = llama_tokenize(
+                vocab, prompts[s].c_str(), (int)prompts[s].size(),
+                tokens.data(), (int)tokens.size(), true, false
+            );
+
+            if (n_tokens < 0) {
+                outputs[s] = "Error: Prompt too long";
+                active_seqs[s] = false;
+                continue;
+            }
+
+            // Manually map this user's tokens into the master batch
+            for (int i = 0; i < n_tokens; ++i) {
+                bool is_last_token = (i == n_tokens - 1);
+
+                int idx = batch.n_tokens;
+                batch.token[idx] = tokens[i];
+                batch.pos[idx] = current_pos[s]++;
+                batch.n_seq_id[idx] = 1;
+                batch.seq_id[idx][0] = s; // Assign this token to sequence 's'
+                batch.logits[idx] = is_last_token; // Only calculate logits for the final token!
+
+                if (is_last_token) {
+                    seq_batch_idx[s] = idx; // Remember where the logit is stored for sampling
+                }
+
+                batch.n_tokens++;
+            }
+        }
+
+        // =========================================================
+        // PHASE 2: FIRST DECODE (The heavy math happens here!)
+        // =========================================================
+        if (batch.n_tokens > 0) {
+            if (llama_decode(ctx_, batch) != 0) {
+                llama_batch_free(batch);
+                return outputs; // Hardware crashed or out of memory
+            }
+        }
+
+        // =========================================================
+        // PHASE 3: PARALLEL GENERATION LOOP
+        // =========================================================
+        auto* sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
+        llama_sampler_chain_add(sampler, llama_sampler_init_temp(temperature));
+        llama_sampler_chain_add(sampler, llama_sampler_init_top_p(top_p, 1));
+        llama_sampler_chain_add(sampler, llama_sampler_init_dist(seed_));
+
+        int active_count = 0;
+        for (bool active : active_seqs) if (active) active_count++;
+
+        for (int step = 0; step < max_new_tokens && active_count > 0; step++) {
+            // Reset the batch length to 0 to prepare for the new tokens we generate
+            batch.n_tokens = 0;
+
+            for (size_t s = 0; s < prompts.size(); ++s) {
+                if (!active_seqs[s]) continue;
+
+                // 1. Sample the next token for sequence 's' using its specific logit index
+                llama_token tok = llama_sampler_sample(sampler, ctx_, seq_batch_idx[s]);
+
+                // 2. Check if this specific sequence finished generating
+                if (llama_vocab_is_eog(vocab, tok)) {
+                    active_seqs[s] = false;
+                    active_count--;
+                    continue;
+                }
+
+                // 3. Convert token to string and append to this specific user's output
+                char buf[256] = {};
+                int n = llama_token_to_piece(vocab, tok, buf, sizeof(buf), 0, true);
+                if (n > 0) outputs[s].append(buf, n);
+
+                // 4. Pack the new token into the batch for the NEXT decode step
+                int idx = batch.n_tokens;
+                batch.token[idx] = tok;
+                batch.pos[idx] = current_pos[s]++;
+                batch.n_seq_id[idx] = 1;
+                batch.seq_id[idx][0] = s;
+                batch.logits[idx] = true; // We need logits for this token to predict the next one!
+                
+                seq_batch_idx[s] = idx;
+                batch.n_tokens++;
+            }
+
+            // Decode the new batch of single tokens
+            if (batch.n_tokens > 0) {
+                if (llama_decode(ctx_, batch) != 0) break;
+            }
+        }
+
+        // =========================================================
+        // PHASE 4: CLEANUP
+        // =========================================================
+        llama_sampler_free(sampler);
+        llama_batch_free(batch);
+        
+        // Clear the KV cache using your existing memory clear function
+        llama_memory_clear(llama_get_memory(t_ctx), true);
+
+        return outputs;
+
+    } catch (const std::exception& e) {
+        // If anything fails, return whatever partial answers we managed to generate
+        return outputs;
+    }
+}

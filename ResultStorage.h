@@ -52,4 +52,30 @@ class ResultsStorage{
         }
     }
 
+    void update_res_batch(const std::vector<InferenceJob>& current_batch, 
+                          const std::vector<InferenceResult>& batch_outputs) {
+        
+        // We lock the mutex EXACTLY ONCE for the entire bus-load of jobs
+        std::lock_guard<std::mutex> lock(mtx);
+
+        // Loop through the batch and update the map safely
+        for (size_t i = 0; i < current_batch.size(); ++i) {
+            const std::string& jobid = current_batch[i].jobid;
+            
+            // Ensure the job hasn't been cancelled/deleted while we were processing
+            if(res_store.count(jobid)){
+                res_store[jobid].output = batch_outputs[i];
+
+                // Check result status and update job status
+                if(batch_outputs[i].status == InferenceStatus::SUCCESS){
+                    res_store[jobid].status = JobStatus::COMPLETED;
+                }
+                else{
+                    res_store[jobid].status = JobStatus::FAILED;
+                }
+            }
+        }
+    }
+
+
 };

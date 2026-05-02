@@ -39,77 +39,96 @@ void WorkerPool::efficiency_measure(int worker_id){
 
 void WorkerPool::worker_loop(int worker_id) {
     pintocore(worker_id);
-    InferenceJob current_job;
+    //InferenceJob current_job;
+    
 
-    while (job_queue_.wait_and_pop(current_job)) {
-        logger_.log("[Worker " + std::to_string(worker_id) + "] Started processing Job "
-                    + current_job.jobid, LogLevel::INFO);
+    while (job_queue_.wait_and_pop(current_batch)) {
+        logger_.log("[Worker " + std::to_string(worker_id) + "] Received a batch of "
+                    + current_batch.size() + " jobs", LogLevel::INFO);
 
-        // --- Latency: measure queue wait time ---
-        current_job.inference_start = std::chrono::high_resolution_clock::now();
-        current_job.queue_wait_ms   = std::chrono::duration<double, std::milli>(
-            current_job.inference_start - current_job.enqueue_time).count();
+        //  latency measure for whole match---
+        auto batch_inference_start = std::chrono::high_resolution_clock::now();
 
+        vector<string>batch_prompts;
+        for (const auto& job : current_batch) {
+            job.inference_start = batch_inference_start;
+            job.queue_wait_ms = std::chrono::duration<double, std::milli>(batch_inference_start - job.enqueue_time).count();
+            batch_prompts.push_back(job.prompt);
+        }
+
+        vector<string>batch_outputs;
+        
         // --- Inference ---
         try {
-            current_job.output = llm.run_inference(
+            /*current_job.output = llm.run_inference(
                 current_job.prompt,
                 current_job.tokens,
                 current_job.temperature,
                 current_job.top_p
-            );
+            );*/
+            batch_outputs = llm.run_batch_inference(batch_prompts, current_batch[0].tokens, current_batch[0].temperature, current_batch[0].top_p);
         } catch (const std::exception& e) {
-            logger_.log("[Worker " + std::to_string(worker_id) + "] Exception during generation for Job "
-                        + current_job.jobid + ": " + e.what(), LogLevel::LOG_ERROR);
-            current_job.output = {"", InferenceStatus::FAILURE_RUNTIME_ERROR, e.what(), 0};
+            std::string error_msg = e.what();
+            logger_.log("[Worker " + std::to_string(worker_id) + "Crirtical Batch Failure: " + error_msg, LogLevel::LOG_ERROR);
+            //updating for batch
+            for(const auto& job : current_batch){
+                job.output.output = "";
+                job.output.status = InferenceStatus::FAILURE_RUNTIME_ERROR;
+                job.output.error_message = error_msg;
+                job.output.tokens_generated = 0;
+                results_store.update_res(job.jobid, job.output); //so they're not waited for
+            }
+            //current_job.output = {"", InferenceStatus::FAILURE_RUNTIME_ERROR, e.what(), 0};
         }
 
         // --- Latency: record inference end and compute both durations ---
-        current_job.inference_end   = std::chrono::high_resolution_clock::now();
-        current_job.inference_ms    = std::chrono::duration<double, std::milli>(
-            current_job.inference_end - current_job.inference_start).count();
-        current_job.e2e_latency_ms  = std::chrono::duration<double, std::milli>(
-            current_job.inference_end - current_job.enqueue_time).count();
+        auto batch_inference_end = std::chrono::high_resolution_clock::now();
+        //current_job.inference_end   = std::chrono::high_resolution_clock::now();
+        for (const auto& job : current_batch) {
+            job.inference_end = batch_inference_end;
+            job.inference_ms = std::chrono::duration<double, std::milli>(job.inference_end - job.inference_start).count();
+            job.e2e_latency_ms = std::chrono::duration<double, std::milli>(job.inference_end - job.enqueue_time).count();
+        }
 
-        logger_.log("[Worker " + std::to_string(worker_id) + "] Job " + current_job.jobid
-                    + " | queue_wait=" + std::to_string(current_job.queue_wait_ms)   + " ms"
-                    + " | inference="  + std::to_string(current_job.inference_ms)    + " ms"
-                    + " | e2e="        + std::to_string(current_job.e2e_latency_ms)  + " ms",
-                    LogLevel::INFO);
 
         efficiency_measure(worker_id);
-        results_store.update_res(current_job.jobid, current_job.output);
+        //results_store.update_res(current_job.jobid, current_job.output);
+        //measuring times for total count updates
+        double batch_inference_ms = 0;
+        double batch_e2e_ms = 0;
+        double batch_queue_wait_ms = 0;
+        int batch_success_count = 0;
+        int batch_tokens = 0;
 
+        for (const auto& job : current_batch) {
+        batch_inference_ms += job.inference_ms;
+        batch_e2e_ms += job.e2e_latency_ms;
+        batch_queue_wait_ms += job.queue_wait_ms;
+        if (job.output.status == InferenceStatus::SUCCESS) {
+        batch_success_count++;
+        }
+        batch_tokens += job.output.tokens;
+        }
+        results_store.update_res_batch(current_batch, batch_outputs);
         // --- Accumulate into pool-level stats (thread-safe) ---
         // Using fetch_add on the raw bits of a double is UB; use a mutex-guarded accumulator instead.
         {
             std::lock_guard<std::mutex> lock(stats_mutex_);
-            total_inference_ms_  += current_job.inference_ms;
-            total_e2e_ms_        += current_job.e2e_latency_ms;
-            total_queue_wait_ms_ += current_job.queue_wait_ms;
-            completed_jobs_++;
+            total_inference_ms_  += batch_inference_ms;
+            total_e2e_ms_        += batch_e2e_ms;
+            total_queue_wait_ms_ += batch_queue_wait_ms;
+            completed_jobs_ += current_batch.size();
+            total_tokens += batch_tokens;
         }
-
-        if (current_job.output.status == InferenceStatus::SUCCESS) {
-            logger_.log("[Worker " + std::to_string(worker_id) + "] Successfully Finished Job "
-                        + current_job.jobid, LogLevel::INFO);
-        } else {
-            logger_.log("[Worker " + std::to_string(worker_id) + "] Failed Job "
-                        + current_job.jobid, LogLevel::LOG_ERROR);
-        }
+        //batching success statement
+        logger_.log("[Worker " + std::to_string(worker_id) + "] Batch Finished. Size: " + std::to_string(current_batch.size()) + " | Success: " + std::to_string(batch_success_count) + "/" + std::to_string(current_batch.size()), LogLevel::INFO);
     }
 
     logger_.log("[Worker " + std::to_string(worker_id) + "] Shutting down.", LogLevel::INFO);
 }
 
-WorkerPool::WorkerPool(size_t num_threads,
-                       ThreadSafeQueue<InferenceJob>& queue,
-                       ResultsStorage& results,
-                       ModelWrapper& llm,
-                       Logger& logger)
-    : job_queue_(queue), results_store(results), llm(llm), logger_(logger),
-      total_inference_ms_(0.0), total_e2e_ms_(0.0),
-      total_queue_wait_ms_(0.0), completed_jobs_(0)
+WorkerPool::WorkerPool(size_t num_threads, ThreadSafeQueue<vector<InferenceJob>>& queue, ResultsStorage& results, ModelWrapper& llm,Logger& logger)
+    : job_queue_(queue), results_store(results), llm(llm), logger_(logger), total_inference_ms_(0.0), total_e2e_ms_(0.0),total_queue_wait_ms_(0.0), completed_jobs_(0), total_tokens(0)
 {
     logger_.log("Starting Worker Pool with " + std::to_string(num_threads) + " threads...", LogLevel::INFO);
 
@@ -136,6 +155,7 @@ WorkerPool::LatencyStats WorkerPool::get_latency_stats() const {
         s.avg_e2e_ms         = total_e2e_ms_         / completed_jobs_;
         s.avg_queue_wait_ms  = total_queue_wait_ms_  / completed_jobs_;
         s.jobs_completed     = completed_jobs_;
+        s.total_tokens = total_tokens;
     }
     return s;
 }
