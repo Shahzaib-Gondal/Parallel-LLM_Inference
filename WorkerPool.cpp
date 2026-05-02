@@ -40,23 +40,24 @@ void WorkerPool::efficiency_measure(int worker_id){
 void WorkerPool::worker_loop(int worker_id) {
     pintocore(worker_id);
     //InferenceJob current_job;
+    std::vector<InferenceJob> current_batch;
     
 
     while (job_queue_.wait_and_pop(current_batch)) {
         logger_.log("[Worker " + std::to_string(worker_id) + "] Received a batch of "
-                    + current_batch.size() + " jobs", LogLevel::INFO);
+                    + std::to_string(current_batch.size()) + " jobs", LogLevel::INFO);
 
         //  latency measure for whole match---
         auto batch_inference_start = std::chrono::high_resolution_clock::now();
 
-        vector<string>batch_prompts;
-        for (const auto& job : current_batch) {
+        std::vector<std::string>batch_prompts;
+        for (auto& job : current_batch) {
             job.inference_start = batch_inference_start;
             job.queue_wait_ms = std::chrono::duration<double, std::milli>(batch_inference_start - job.enqueue_time).count();
             batch_prompts.push_back(job.prompt);
         }
 
-        vector<string>batch_outputs;
+        std::vector<InferenceResult>batch_outputs;
         
         // --- Inference ---
         try {
@@ -71,7 +72,7 @@ void WorkerPool::worker_loop(int worker_id) {
             std::string error_msg = e.what();
             logger_.log("[Worker " + std::to_string(worker_id) + "Crirtical Batch Failure: " + error_msg, LogLevel::LOG_ERROR);
             //updating for batch
-            for(const auto& job : current_batch){
+            for(auto& job : current_batch){
                 job.output.output = "";
                 job.output.status = InferenceStatus::FAILURE_RUNTIME_ERROR;
                 job.output.error_message = error_msg;
@@ -84,7 +85,7 @@ void WorkerPool::worker_loop(int worker_id) {
         // --- Latency: record inference end and compute both durations ---
         auto batch_inference_end = std::chrono::high_resolution_clock::now();
         //current_job.inference_end   = std::chrono::high_resolution_clock::now();
-        for (const auto& job : current_batch) {
+        for (auto& job : current_batch) {
             job.inference_end = batch_inference_end;
             job.inference_ms = std::chrono::duration<double, std::milli>(job.inference_end - job.inference_start).count();
             job.e2e_latency_ms = std::chrono::duration<double, std::milli>(job.inference_end - job.enqueue_time).count();
@@ -100,14 +101,14 @@ void WorkerPool::worker_loop(int worker_id) {
         int batch_success_count = 0;
         int batch_tokens = 0;
 
-        for (const auto& job : current_batch) {
+        for (auto& job : current_batch) {
         batch_inference_ms += job.inference_ms;
         batch_e2e_ms += job.e2e_latency_ms;
         batch_queue_wait_ms += job.queue_wait_ms;
         if (job.output.status == InferenceStatus::SUCCESS) {
         batch_success_count++;
         }
-        batch_tokens += job.output.tokens;
+        batch_tokens += job.output.tokens_generated;
         }
         results_store.update_res_batch(current_batch, batch_outputs);
         // --- Accumulate into pool-level stats (thread-safe) ---

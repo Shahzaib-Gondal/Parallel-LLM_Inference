@@ -13,7 +13,7 @@ class WorkerPool {
 private:
     std::vector<std::thread> workers_;
     //ThreadSafeQueue<InferenceJob>& job_queue_;
-    ThreadSafeQueue<vector<InferenceJob>>& job_queue_;
+    ThreadSafeQueue<std::vector<InferenceJob>>& job_queue_;
     void worker_loop(int worker_id);
     //m2 funcs to measure
     void pintocore(int core_id);
@@ -30,7 +30,7 @@ private:
 
 public:
     //WorkerPool(size_t num_threads, ThreadSafeQueue<InferenceJob>& queue, ResultsStorage& results, ModelWrapper& llm, Logger& logger);
-    WorkerPool(size_t num_threads, ThreadSafeQueue<vector<InferenceJob>>& queue, ResultsStorage& results, ModelWrapper& llm, , Logger& logger);
+    WorkerPool(size_t num_threads, ThreadSafeQueue<std::vector<InferenceJob>>& queue, ResultsStorage& results, ModelWrapper& llm, Logger& logger);
     ~WorkerPool();
      struct LatencyStats {
         double avg_inference_ms  = 0.0;  //pure model execution time just inference

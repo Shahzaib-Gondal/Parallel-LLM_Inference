@@ -15,17 +15,24 @@ ModelWrapper::ModelWrapper(const std::string& model_path,
     llama_backend_init();
 
     llama_model_params mparams = llama_model_default_params();
-    mparams.n_gpu_layers = 0;
+    mparams.n_gpu_layers = 32; //starting at GPU 
 
     model_ = llama_model_load_from_file(model_path.c_str(), mparams);
-    if (!model_)
+    if (!model_){
+        //fall back to cpu
+        mparams.n_gpu_layers = 0;
+        model_ = llama_model_load_from_file(model_path.c_str(), mparams);
+    if (!model_) {
         throw std::runtime_error("Failed to load model: " + model_path);
+    }
+}
 
     std::cerr << "[ModelWrapper] Shared Model Loaded. ctx_size=" << n_ctx_
               << " threads_per_ctx=" << n_threads_ << "\n";
 }
 
 void ModelWrapper::thread_context() {
+    std::cerr << "[ModelWrapper] Initializing context for Thread " << std::this_thread::get_id() << "...\n";
     if (t_ctx == nullptr) {
         llama_context_params cparams = llama_context_default_params();
         cparams.n_ctx     = n_ctx_;
@@ -33,6 +40,9 @@ void ModelWrapper::thread_context() {
 
         t_ctx = llama_init_from_model(model_, cparams);
         if (!t_ctx) {
+            cparams.n_ctx = 512; //smaller context size for fallback
+            t_ctx = llama_init_from_model(model_, cparams);
+            if (!t_ctx)
             throw std::runtime_error("Failed to create thread-local context");
         }
         std::cerr << "[ModelWrapper] Context initialized for Thread " << std::this_thread::get_id() << "\n";
@@ -116,17 +126,17 @@ InferenceResult ModelWrapper::run_inference(const std::string& prompt,
     }
 }
 
-std::vector<std::string> ModelWrapper::run_batch_inference(
+std::vector<InferenceResult> ModelWrapper::run_batch_inference(
     const std::vector<std::string>& prompts,
     int max_new_tokens,
     float temperature,
     float top_p)
 {
     // Initialize an empty vector to hold our answers
-    std::vector<std::string> outputs(prompts.size(), "");
+    std::vector<InferenceResult> results(prompts.size(), {"", InferenceStatus::FAILURE_MODEL_NOT_LOADED, "Model not loaded", 0});
 
     if (!is_loaded() || prompts.empty())
-        return outputs;
+        return results;
 
     try {
         thread_context(); //initialising a local thread context
@@ -152,7 +162,7 @@ std::vector<std::string> ModelWrapper::run_batch_inference(
             );
 
             if (n_tokens < 0) {
-                outputs[s] = "Error: Prompt too long";
+                results[s] = {"", InferenceStatus::FAILURE_TOKEN_LIMIT, "Prompt too long", 0};
                 active_seqs[s] = false;
                 continue;
             }
@@ -180,9 +190,9 @@ std::vector<std::string> ModelWrapper::run_batch_inference(
         // PHASE 2: FIRST DECODE (The heavy math happens here!)
         // =========================================================
         if (batch.n_tokens > 0) {
-            if (llama_decode(ctx_, batch) != 0) {
+            if (llama_decode(t_ctx, batch) != 0) {
                 llama_batch_free(batch);
-                return outputs; // Hardware crashed or out of memory
+                return results; // Hardware crashed or out of memory
             }
         }
 
@@ -205,7 +215,7 @@ std::vector<std::string> ModelWrapper::run_batch_inference(
                 if (!active_seqs[s]) continue;
 
                 // 1. Sample the next token for sequence 's' using its specific logit index
-                llama_token tok = llama_sampler_sample(sampler, ctx_, seq_batch_idx[s]);
+                llama_token tok = llama_sampler_sample(sampler, t_ctx, seq_batch_idx[s]);
 
                 // 2. Check if this specific sequence finished generating
                 if (llama_vocab_is_eog(vocab, tok)) {
@@ -217,7 +227,11 @@ std::vector<std::string> ModelWrapper::run_batch_inference(
                 // 3. Convert token to string and append to this specific user's output
                 char buf[256] = {};
                 int n = llama_token_to_piece(vocab, tok, buf, sizeof(buf), 0, true);
-                if (n > 0) outputs[s].append(buf, n);
+                if (n > 0) {
+                    results[s].output.append(buf, n);
+                    results[s].tokens_generated++;
+                    results[s].status = InferenceStatus::SUCCESS; // Update status on first successful token generation
+                }
 
                 // 4. Pack the new token into the batch for the NEXT decode step
                 int idx = batch.n_tokens;
@@ -233,7 +247,7 @@ std::vector<std::string> ModelWrapper::run_batch_inference(
 
             // Decode the new batch of single tokens
             if (batch.n_tokens > 0) {
-                if (llama_decode(ctx_, batch) != 0) break;
+                if (llama_decode(t_ctx, batch) != 0) break;
             }
         }
 
@@ -246,10 +260,10 @@ std::vector<std::string> ModelWrapper::run_batch_inference(
         // Clear the KV cache using your existing memory clear function
         llama_memory_clear(llama_get_memory(t_ctx), true);
 
-        return outputs;
+        return results;
 
     } catch (const std::exception& e) {
         // If anything fails, return whatever partial answers we managed to generate
-        return outputs;
+        return results;
     }
 }

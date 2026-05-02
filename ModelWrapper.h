@@ -1,6 +1,7 @@
 #pragma once
 #include "InferenceResult.h"
 #include <string>
+#include <vector>
 
 struct llama_model;
 struct llama_context;
@@ -20,7 +21,7 @@ public:
                                   int   max_new_tokens = 128,
                                   float temperature    = 0.7f,
                                   float top_p          = 0.9f);
-    std::vector<string> run_batch_inference(const std::vector<std::string>& prompt,
+    std::vector<InferenceResult> run_batch_inference(const std::vector<std::string>& prompt,
                                   int   max_new_tokens = 128,
                                   float temperature    = 0.7f,
                                   float top_p          = 0.9f);                            

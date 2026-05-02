@@ -5,6 +5,8 @@
 #include<unordered_map>
 #include<mutex>
 #include<optional>
+#include<iostream>
+#include<vector>
 
 class ResultsStorage{
     std::unordered_map<std::string, InferenceJob> res_store;

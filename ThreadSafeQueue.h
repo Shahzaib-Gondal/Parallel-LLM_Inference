@@ -45,7 +45,7 @@ public:
     }
 
     bool wait_and_pop_timeout(T& value, std::chrono::milliseconds timeout) {
-        unique_lock<mutex> lock(mutex_);
+        std::unique_lock<std::mutex> lock(mutex_);
         
         // wait_for returns false if the time runs out before the queue has an item.
         // It returns true if an item arrives (or is already there).
