@@ -31,12 +31,12 @@ ModelWrapper::ModelWrapper(const std::string& model_path,
               << " threads_per_ctx=" << n_threads_ << "\n";
 }
 
-void ModelWrapper::thread_context() {
-    std::cerr << "[ModelWrapper] Initializing context for Thread " << std::this_thread::get_id() << "...\n";
+void ModelWrapper::thread_context(int n_sequence) {
     if (t_ctx == nullptr) {
         llama_context_params cparams = llama_context_default_params();
         cparams.n_ctx     = n_ctx_;
         cparams.n_threads = n_threads_;
+        cparams.n_seq_max = n_sequence;
 
         t_ctx = llama_init_from_model(model_, cparams);
         if (!t_ctx) {
@@ -134,12 +134,15 @@ std::vector<InferenceResult> ModelWrapper::run_batch_inference(
 {
     // Initialize an empty vector to hold our answers
     std::vector<InferenceResult> results(prompts.size(), {"", InferenceStatus::FAILURE_MODEL_NOT_LOADED, "Model not loaded", 0});
-
-    if (!is_loaded() || prompts.empty())
+    std::cout<<"[ModelWrapper] Starting batch inference for " << prompts.size() << " prompts on Thread " << std::this_thread::get_id() << "...\n";
+    if (!model_ || prompts.empty()){
+        std::cout<<"[ModelWrapper] Batch inference failed: Model not loaded or empty prompts.\n";
         return results;
+    }
 
     try {
-        thread_context(); //initialising a local thread context
+        std::cout<<"[ModelWrapper] Initializing thread context for batch inference...\n";
+        thread_context(prompts.size()); //initialising a local thread context
         const llama_vocab* vocab = llama_model_get_vocab(model_);
 
         // 1. Initialize a batch large enough to hold all tokens from all prompts.

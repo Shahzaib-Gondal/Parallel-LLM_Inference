@@ -34,5 +34,5 @@ private:
     int            n_ctx_;
     int            n_threads_;
     unsigned int   seed_;
-    void thread_context();
+    void thread_context(int n_sequence = 1);
 };
