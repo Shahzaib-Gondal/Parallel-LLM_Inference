@@ -9,7 +9,6 @@ include_directories(${LLAMA_ROOT}/include)
 include_directories(${LLAMA_ROOT}/ggml/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
-# Link all llama libraries
 add_executable(worker_process
     worker_process.cpp
     ModelWrapper.cpp

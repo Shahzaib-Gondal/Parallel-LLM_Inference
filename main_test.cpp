@@ -9,7 +9,6 @@ void test_basic(ModelWrapper& w) {
     std::cout << "Output: " << r.output << "\n";
     std::cout << "Tokens: " << r.tokens_generated << "\n";
 }
-
 void test_empty(ModelWrapper& w) {
     std::cout << "\n--- test: empty prompt ---\n";
     auto r = w.run_inference("", 50);

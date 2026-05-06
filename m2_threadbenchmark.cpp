@@ -33,7 +33,6 @@ struct BenchResult {
     double avg_queue_wait_ms;    // contention overhead per job
     double ram_usage_mb;
 };
-
 double get_ram_mb() {
     PROCESS_MEMORY_COUNTERS pmc;
     if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc)))
@@ -50,8 +49,7 @@ auto jobs = make_mt_jobs(NUM_JOBS);
 for (auto& job : jobs) {
     job.enqueue_time = std::chrono::high_resolution_clock::now();
 }
-// Push all jobs as a single batch
-// FIXED — each job is its own batch so all workers get work
+
 for (auto& job : jobs) {
     job.enqueue_time = std::chrono::high_resolution_clock::now();
     queue.push(std::vector<InferenceJob>{job});
