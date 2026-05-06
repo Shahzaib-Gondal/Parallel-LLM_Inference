@@ -2,10 +2,10 @@
 <Project>
   <ProjectOutputs>
     <ProjectOutput>
-      <FullPath>D:\SSGC\Downloads\pdc project\llama.cpp\inference_engine\inference_engine\build\x64\Release\ZERO_CHECK</FullPath>
+      <FullPath>C:\Users\SSGC\Parallel-LLM_Inference\build\x64\Release\ZERO_CHECK</FullPath>
     </ProjectOutput>
     <ProjectOutput>
-      <FullPath>D:\SSGC\Downloads\pdc project\llama.cpp\inference_engine\inference_engine\build\Release\inference_test.exe</FullPath>
+      <FullPath>C:\Users\SSGC\Parallel-LLM_Inference\build\Release\inference_test.exe</FullPath>
     </ProjectOutput>
   </ProjectOutputs>
   <ContentFiles />

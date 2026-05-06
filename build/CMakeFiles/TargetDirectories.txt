@@ -1,3 +1,6 @@
-D:/SSGC/Downloads/pdc project/llama.cpp/inference_engine/inference_engine/build/CMakeFiles/inference_test.dir
-D:/SSGC/Downloads/pdc project/llama.cpp/inference_engine/inference_engine/build/CMakeFiles/ALL_BUILD.dir
-D:/SSGC/Downloads/pdc project/llama.cpp/inference_engine/inference_engine/build/CMakeFiles/ZERO_CHECK.dir
+C:/Users/SSGC/Parallel-LLM_Inference/build/CMakeFiles/worker_process.dir
+C:/Users/SSGC/Parallel-LLM_Inference/build/CMakeFiles/m2_benchmark.dir
+C:/Users/SSGC/Parallel-LLM_Inference/build/CMakeFiles/m2_threadbenchmark.dir
+C:/Users/SSGC/Parallel-LLM_Inference/build/CMakeFiles/m3_batch_benchmark.dir
+C:/Users/SSGC/Parallel-LLM_Inference/build/CMakeFiles/ALL_BUILD.dir
+C:/Users/SSGC/Parallel-LLM_Inference/build/CMakeFiles/ZERO_CHECK.dir

@@ -2,7 +2,7 @@
 <Project>
   <ProjectOutputs>
     <ProjectOutput>
-      <FullPath>D:\SSGC\Downloads\pdc project\llama.cpp\inference_engine\inference_engine\build\CMakeFiles\4.2.3\CompilerIdC\CompilerIdC.exe</FullPath>
+      <FullPath>C:\Users\SSGC\Parallel-LLM_Inference\build\CMakeFiles\4.2.3\CompilerIdC\CompilerIdC.exe</FullPath>
     </ProjectOutput>
   </ProjectOutputs>
   <ContentFiles />

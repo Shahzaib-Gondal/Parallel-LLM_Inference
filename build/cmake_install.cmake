@@ -1,8 +1,8 @@
-# Install script for directory: D:/SSGC/Downloads/pdc project/llama.cpp/inference_engine/inference_engine
+# Install script for directory: C:/Users/SSGC/Parallel-LLM_Inference
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
-  set(CMAKE_INSTALL_PREFIX "C:/Program Files (x86)/inference_engine")
+  set(CMAKE_INSTALL_PREFIX "C:/Program Files/parallel_llm_inference")
 endif()
 string(REGEX REPLACE "/$" "" CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 
@@ -35,7 +35,7 @@ endif()
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
 if(CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "D:/SSGC/Downloads/pdc project/llama.cpp/inference_engine/inference_engine/build/install_local_manifest.txt"
+  file(WRITE "C:/Users/SSGC/Parallel-LLM_Inference/build/install_local_manifest.txt"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()
 if(CMAKE_INSTALL_COMPONENT)
@@ -51,6 +51,6 @@ else()
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "D:/SSGC/Downloads/pdc project/llama.cpp/inference_engine/inference_engine/build/${CMAKE_INSTALL_MANIFEST}"
+  file(WRITE "C:/Users/SSGC/Parallel-LLM_Inference/build/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()

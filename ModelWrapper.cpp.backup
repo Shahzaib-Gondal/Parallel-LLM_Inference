@@ -1,0 +1,277 @@
+﻿#include "ModelWrapper.h"
+#include "D:/SSGC/Downloads/pdc project/llama.cpp/include/llama.h"  // or whatever the path is
+#include <stdexcept>
+#include <vector>
+#include <iostream>
+#include <thread>
+#include <thread>      // ← ADD THIS LINE if missing
+#include <chrono>      // ← ADD THIS LINE if missing
+#include <mutex>       // ← ADD THIS LINE if missing
+#include <thread> // Required for get_id()
+
+// Initialize the static thread_local pointer
+thread_local llama_context* ModelWrapper::t_ctx = nullptr;
+
+ModelWrapper::ModelWrapper(const std::string& model_path,
+                           int n_ctx, int n_threads, unsigned int seed)
+    : n_ctx_(n_ctx), n_threads_(n_threads), seed_(seed)
+{
+    llama_backend_init();
+
+    llama_model_params mparams = llama_model_default_params();
+    mparams.n_gpu_layers = 32; //starting at GPU 
+
+    model_ = llama_model_load_from_file(model_path.c_str(), mparams);
+    if (!model_){
+        //fall back to cpu
+        mparams.n_gpu_layers = 0;
+        model_ = llama_model_load_from_file(model_path.c_str(), mparams);
+    if (!model_) {
+        throw std::runtime_error("Failed to load model: " + model_path);
+    }
+}
+
+    std::cerr << "[ModelWrapper] Shared Model Loaded. ctx_size=" << n_ctx_
+              << " threads_per_ctx=" << n_threads_ << "\n";
+}
+
+void ModelWrapper::thread_context(int n_sequence) {
+    if (t_ctx == nullptr) {
+        llama_context_params cparams = llama_context_default_params();
+        cparams.n_ctx     = n_ctx_;
+        cparams.n_threads = n_threads_;
+        cparams.n_seq_max = n_sequence;
+
+        t_ctx = llama_init_from_model(model_, cparams);
+        if (!t_ctx) {
+            cparams.n_ctx = 512; //smaller context size for fallback
+            t_ctx = llama_init_from_model(model_, cparams);
+            if (!t_ctx)
+            throw std::runtime_error("Failed to create thread-local context");
+        }
+        std::cerr << "[ModelWrapper] Context initialized for Thread " << std::this_thread::get_id() << "\n";
+    }
+}
+
+ModelWrapper::~ModelWrapper() {
+    if (model_) { 
+        llama_model_free(model_); 
+        model_ = nullptr; 
+    }
+    llama_backend_free();
+    std::cerr << "[ModelWrapper] Cleaned up.\n";
+}
+
+InferenceResult ModelWrapper::run_inference(const std::string& prompt,
+                                            int max_new_tokens,
+                                            float temperature,
+                                            float top_p)
+{
+    if (!model_)
+        return {"", InferenceStatus::FAILURE_MODEL_NOT_LOADED, "Model not loaded", 0};
+
+    if (prompt.empty())
+        return {"", InferenceStatus::FAILURE_EMPTY_PROMPT, "Prompt is empty", 0};
+
+    try {
+        thread_context();
+
+        const llama_vocab* vocab = llama_model_get_vocab(model_);
+
+        std::vector<llama_token> tokens(n_ctx_);
+        int n_tokens = llama_tokenize(
+            vocab,
+            prompt.c_str(), (int)prompt.size(),
+            tokens.data(), (int)tokens.size(),
+            true, false
+        );
+
+        if (n_tokens < 0)
+            return {"", InferenceStatus::FAILURE_TOKEN_LIMIT, "Prompt too long", 0};
+        tokens.resize(n_tokens);
+
+        llama_batch batch = llama_batch_get_one(tokens.data(), n_tokens);
+        
+        // Use t_ctx instead of a member ctx_
+        if (llama_decode(t_ctx, batch) != 0)
+            return {"", InferenceStatus::FAILURE_RUNTIME_ERROR, "Decode failed", 0};
+
+        std::string output;
+        int generated = 0;
+
+        auto* sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
+        llama_sampler_chain_add(sampler, llama_sampler_init_temp(temperature));
+        llama_sampler_chain_add(sampler, llama_sampler_init_top_p(top_p, 1));
+        llama_sampler_chain_add(sampler, llama_sampler_init_dist(seed_));
+
+        for (int i = 0; i < max_new_tokens; i++) {
+            llama_token tok = llama_sampler_sample(sampler, t_ctx, -1);
+
+            if (llama_vocab_is_eog(vocab, tok)) break;
+
+            char buf[256] = {};
+            int  n        = llama_token_to_piece(vocab, tok, buf, sizeof(buf), 0, true);
+            if (n > 0) output.append(buf, n);
+
+            llama_batch nb = llama_batch_get_one(&tok, 1);
+            if (llama_decode(t_ctx, nb) != 0) break;
+            generated++;
+        }
+
+        llama_sampler_free(sampler);
+        
+        llama_memory_clear(llama_get_memory(t_ctx), true);
+
+        return {output, InferenceStatus::SUCCESS, "", generated};
+
+    } catch (const std::exception& e) {
+        return {"", InferenceStatus::FAILURE_RUNTIME_ERROR,
+                std::string("Exception: ") + e.what(), 0};
+    }
+}
+
+std::vector<InferenceResult> ModelWrapper::run_batch_inference(
+    const std::vector<std::string>& prompts,
+    int max_new_tokens,
+    float temperature,
+    float top_p)
+{
+    // Initialize an empty vector to hold our answers
+    std::vector<InferenceResult> results(prompts.size(), {"", InferenceStatus::FAILURE_MODEL_NOT_LOADED, "Model not loaded", 0});
+    std::cout<<"[ModelWrapper] Starting batch inference for " << prompts.size() << " prompts on Thread " << std::this_thread::get_id() << "...\n";
+    if (!model_ || prompts.empty()){
+        std::cout<<"[ModelWrapper] Batch inference failed: Model not loaded or empty prompts.\n";
+        return results;
+    }
+
+    try {
+        std::cout<<"[ModelWrapper] Initializing thread context for batch inference...\n";
+        thread_context(prompts.size()); //initialising a local thread context
+        const llama_vocab* vocab = llama_model_get_vocab(model_);
+
+        // 1. Initialize a batch large enough to hold all tokens from all prompts.
+        // n_ctx_ is used as a safe upper-bound for the initial memory allocation.
+        llama_batch batch = llama_batch_init(n_ctx_, 0, prompts.size());
+
+        // Tracking arrays for the parallel sequences
+        std::vector<int> current_pos(prompts.size(), 0);
+        std::vector<bool> active_seqs(prompts.size(), true);
+        std::vector<int> seq_batch_idx(prompts.size(), -1); 
+
+        // =========================================================
+        // PHASE 1: PACK THE INITIAL BATCH
+        // =========================================================
+        for (size_t s = 0; s < prompts.size(); ++s) {
+            std::vector<llama_token> tokens(n_ctx_);
+            int n_tokens = llama_tokenize(
+                vocab, prompts[s].c_str(), (int)prompts[s].size(),
+                tokens.data(), (int)tokens.size(), true, false
+            );
+
+            if (n_tokens < 0) {
+                results[s] = {"", InferenceStatus::FAILURE_TOKEN_LIMIT, "Prompt too long", 0};
+                active_seqs[s] = false;
+                continue;
+            }
+
+            // Manually map this user's tokens into the master batch
+            for (int i = 0; i < n_tokens; ++i) {
+                bool is_last_token = (i == n_tokens - 1);
+
+                int idx = batch.n_tokens;
+                batch.token[idx] = tokens[i];
+                batch.pos[idx] = current_pos[s]++;
+                batch.n_seq_id[idx] = 1;
+                batch.seq_id[idx][0] = s; // Assign this token to sequence 's'
+                batch.logits[idx] = is_last_token; // Only calculate logits for the final token!
+
+                if (is_last_token) {
+                    seq_batch_idx[s] = idx; // Remember where the logit is stored for sampling
+                }
+
+                batch.n_tokens++;
+            }
+        }
+
+        // =========================================================
+        // PHASE 2: FIRST DECODE (The heavy math happens here!)
+        // =========================================================
+        if (batch.n_tokens > 0) {
+            if (llama_decode(t_ctx, batch) != 0) {
+                llama_batch_free(batch);
+                return results; // Hardware crashed or out of memory
+            }
+        }
+
+        // =========================================================
+        // PHASE 3: PARALLEL GENERATION LOOP
+        // =========================================================
+        auto* sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
+        llama_sampler_chain_add(sampler, llama_sampler_init_temp(temperature));
+        llama_sampler_chain_add(sampler, llama_sampler_init_top_p(top_p, 1));
+        llama_sampler_chain_add(sampler, llama_sampler_init_dist(seed_));
+
+        int active_count = 0;
+        for (bool active : active_seqs) if (active) active_count++;
+
+        for (int step = 0; step < max_new_tokens && active_count > 0; step++) {
+            // Reset the batch length to 0 to prepare for the new tokens we generate
+            batch.n_tokens = 0;
+
+            for (size_t s = 0; s < prompts.size(); ++s) {
+                if (!active_seqs[s]) continue;
+
+                // 1. Sample the next token for sequence 's' using its specific logit index
+                llama_token tok = llama_sampler_sample(sampler, t_ctx, seq_batch_idx[s]);
+
+                // 2. Check if this specific sequence finished generating
+                if (llama_vocab_is_eog(vocab, tok)) {
+                    active_seqs[s] = false;
+                    active_count--;
+                    continue;
+                }
+
+                // 3. Convert token to string and append to this specific user's output
+                char buf[256] = {};
+                int n = llama_token_to_piece(vocab, tok, buf, sizeof(buf), 0, true);
+                if (n > 0) {
+                    results[s].output.append(buf, n);
+                    results[s].tokens_generated++;
+                    results[s].status = InferenceStatus::SUCCESS; // Update status on first successful token generation
+                }
+
+                // 4. Pack the new token into the batch for the NEXT decode step
+                int idx = batch.n_tokens;
+                batch.token[idx] = tok;
+                batch.pos[idx] = current_pos[s]++;
+                batch.n_seq_id[idx] = 1;
+                batch.seq_id[idx][0] = s;
+                batch.logits[idx] = true; // We need logits for this token to predict the next one!
+                
+                seq_batch_idx[s] = idx;
+                batch.n_tokens++;
+            }
+
+            // Decode the new batch of single tokens
+            if (batch.n_tokens > 0) {
+                if (llama_decode(t_ctx, batch) != 0) break;
+            }
+        }
+
+        // =========================================================
+        // PHASE 4: CLEANUP
+        // =========================================================
+        llama_sampler_free(sampler);
+        llama_batch_free(batch);
+        
+        // Clear the KV cache using your existing memory clear function
+        llama_memory_clear(llama_get_memory(t_ctx), true);
+
+        return results;
+
+    } catch (const std::exception& e) {
+        // If anything fails, return whatever partial answers we managed to generate
+        return results;
+    }
+}
+

@@ -1,5 +1,5 @@
-#pragma once
-#include <string>
+﻿#pragma once
+#include <string>`n#include <mutex>`n#include <thread>`n#include <queue>
 #include <vector>
 #include <mutex>
 #include <queue>

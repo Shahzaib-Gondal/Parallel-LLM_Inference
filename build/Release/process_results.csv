@@ -1,0 +1,5 @@
+strategy,workers,total_time_sec,throughput,avg_latency_ms,min_latency_ms,max_latency_ms,success
+Sequential,1,51.0617,0.587525,1701.71,139.366,2508.49,30/30
+1 Process,1,56.7581,0.528559,1891.91,137.618,2646.45,30/30
+2 Processes,2,41.6498,0.720292,2754.94,241.225,3387.84,30/30
+4 Processes,4,41.8043,0.717629,5408.16,431.462,6778.38,30/30

@@ -1,4 +1,9 @@
 # CMake generation dependency list for this directory.
+C:/Users/SSGC/Parallel-LLM_Inference/CMakeLists.txt
+C:/Users/SSGC/Parallel-LLM_Inference/build/CMakeFiles/4.2.3/CMakeCCompiler.cmake
+C:/Users/SSGC/Parallel-LLM_Inference/build/CMakeFiles/4.2.3/CMakeCXXCompiler.cmake
+C:/Users/SSGC/Parallel-LLM_Inference/build/CMakeFiles/4.2.3/CMakeRCCompiler.cmake
+C:/Users/SSGC/Parallel-LLM_Inference/build/CMakeFiles/4.2.3/CMakeSystem.cmake
 D:/Program Files/Cmake/share/cmake-4.2/Modules/CMakeCInformation.cmake
 D:/Program Files/Cmake/share/cmake-4.2/Modules/CMakeCXXInformation.cmake
 D:/Program Files/Cmake/share/cmake-4.2/Modules/CMakeCommonLanguageInclude.cmake
@@ -27,8 +32,3 @@ D:/Program Files/Cmake/share/cmake-4.2/Modules/Platform/Windows-MSVC-CXX.cmake
 D:/Program Files/Cmake/share/cmake-4.2/Modules/Platform/Windows-MSVC.cmake
 D:/Program Files/Cmake/share/cmake-4.2/Modules/Platform/Windows.cmake
 D:/Program Files/Cmake/share/cmake-4.2/Modules/Platform/WindowsPaths.cmake
-D:/SSGC/Downloads/pdc project/llama.cpp/inference_engine/inference_engine/CMakeLists.txt
-D:/SSGC/Downloads/pdc project/llama.cpp/inference_engine/inference_engine/build/CMakeFiles/4.2.3/CMakeCCompiler.cmake
-D:/SSGC/Downloads/pdc project/llama.cpp/inference_engine/inference_engine/build/CMakeFiles/4.2.3/CMakeCXXCompiler.cmake
-D:/SSGC/Downloads/pdc project/llama.cpp/inference_engine/inference_engine/build/CMakeFiles/4.2.3/CMakeRCCompiler.cmake
-D:/SSGC/Downloads/pdc project/llama.cpp/inference_engine/inference_engine/build/CMakeFiles/4.2.3/CMakeSystem.cmake

@@ -42,26 +42,31 @@ double get_ram_mb() {
 }
 
 BenchResult run_mt_benchmark(int num_threads, ModelWrapper& llm, Logger& logger) {
-    constexpr int NUM_JOBS = 150;
+    constexpr int NUM_JOBS = 50;
 
-    ThreadSafeQueue<InferenceJob> queue(200);
+    ThreadSafeQueue<std::vector<InferenceJob>> queue(200);
     ResultsStorage results;
-    auto jobs = make_mt_jobs(NUM_JOBS);
-    for (auto& job : jobs) {
-        job.enqueue_time = std::chrono::high_resolution_clock::now();
-        queue.push(job);
-    }
+auto jobs = make_mt_jobs(NUM_JOBS);
+for (auto& job : jobs) {
+    job.enqueue_time = std::chrono::high_resolution_clock::now();
+}
+// Push all jobs as a single batch
+// FIXED — each job is its own batch so all workers get work
+for (auto& job : jobs) {
+    job.enqueue_time = std::chrono::high_resolution_clock::now();
+    queue.push(std::vector<InferenceJob>{job});
+}
 
     double ram_usage = 0.0;
     WorkerPool::LatencyStats lat_stats;
 
     auto t_start = std::chrono::high_resolution_clock::now();
     {
-        WorkerPool pool(num_threads, queue, results, llm, logger);
+       WorkerPool pool(num_threads, queue, results, llm, logger);
         queue.shutdown();
-        // ~WorkerPool() joins all workers here; safe to read latency after this line.
+        pool.join();                           // all threads done
+        lat_stats  = pool.get_latency_stats(); // read AFTER join
         ram_usage  = get_ram_mb();
-        lat_stats  = pool.get_latency_stats();
     }
     auto t_end = std::chrono::high_resolution_clock::now();
 

@@ -2,6 +2,9 @@
 #include "InferenceResult.h"
 #include <string>
 #include <vector>
+#include <unordered_map>
+#include <mutex>
+#include <thread>
 
 struct llama_model;
 struct llama_context;
@@ -17,22 +20,27 @@ public:
     ModelWrapper(const ModelWrapper&)            = delete;
     ModelWrapper& operator=(const ModelWrapper&) = delete;
 
+    void thread_context(int thread_id = 0);
+
     InferenceResult run_inference(const std::string& prompt,
                                   int   max_new_tokens = 128,
                                   float temperature    = 0.7f,
                                   float top_p          = 0.9f);
-    std::vector<InferenceResult> run_batch_inference(const std::vector<std::string>& prompt,
+
+    std::vector<InferenceResult> run_batch_inference(
+                                  const std::vector<std::string>& prompts,
                                   int   max_new_tokens = 128,
                                   float temperature    = 0.7f,
-                                  float top_p          = 0.9f);                            
+                                  float top_p          = 0.9f);
 
-    bool is_loaded() const { return model_ != nullptr && t_ctx != nullptr; }
+    bool is_loaded() const { return model_ != nullptr; }
 
 private:
-    llama_model*   model_    = nullptr;
-    static thread_local llama_context* t_ctx; //localising context
-    int            n_ctx_;
-    int            n_threads_;
-    unsigned int   seed_;
-    void thread_context(int n_sequence = 1);
+    llama_model*  model_     = nullptr;
+    int           n_ctx_;
+    int           n_threads_;
+    unsigned int  seed_;
+    std::unordered_map<std::thread::id, llama_context*> ctx_map_;
+    mutable std::mutex ctx_mutex_;
+    mutable std::mutex decode_mutex_;
 };

@@ -39,6 +39,9 @@ public:
         int    jobs_completed    = 0;
         long long total_tokens = 0;
     };
- 
+   void join() {
+    for (auto& w : workers_)
+        if (w.joinable()) w.join();
+}
     LatencyStats get_latency_stats() const;
 };

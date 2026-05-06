@@ -14,9 +14,10 @@ int main(int argc, char* argv[]) {
     _setmode(_fileno(stdin),  _O_BINARY);
     _setmode(_fileno(stdout), _O_BINARY);
 
-    ModelWrapper* wrapper = nullptr;
+        ModelWrapper* wrapper = nullptr;
     try {
         wrapper = new ModelWrapper(argv[1], 512, 4, 42);
+        wrapper->thread_context(0);   // <-- ADD THIS LINE
     } catch (const std::exception& e) {
         std::cout << "ERROR:Failed to load model: " << e.what() << "\n";
         std::cout.flush();
